@@ -9,6 +9,7 @@ from lxml import html
 from lxml.cssselect import CSSSelector
 
 import requests
+import re
 
 locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
 
@@ -63,7 +64,7 @@ def parse_product(element):
 
     return (name[0].text.strip(), {
         'url': url[0].get('href'),
-        'desc': desc[0].text.strip(),
+        'desc': re.sub(re.compile(r"\r\s*"), "\n", desc[0].text.strip()),
         'price': locale.atof(price[0].get('content')),
     })
 
@@ -80,6 +81,14 @@ def get_products():
         parse_product(x) for x in products)}
 
 
+def format_product(name, product):
+    return "%s: %s\n  %s\n  %s" % (
+        name,
+        locale.currency(product['price']),
+        product['desc'].replace("\n", "\n  "),
+        product['url']
+    )
+
 if __name__ == '__main__':
     settings = json.loads(open("settings.json").read())
 
@@ -87,7 +96,7 @@ if __name__ == '__main__':
     try:
         db_file = open(settings['db_file'], 'r')
         db_old = json.load(db_file)
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, FileNotFoundError):
         pass
 
     db_new = get_products()
@@ -95,12 +104,9 @@ if __name__ == '__main__':
 
     if db_old is not None:
         for name in (db_new.keys() - db_old.keys()):
-            product = db_new[name]
-            print("new product: %s, %s$" %
-                  (name, locale.currency(product['price'])))
-        for name in (db_new.keys() - db_old.keys()):
-            product = db_new[name]
-            print("removed product: %s" % name)
+            print("+ %s\n" % format_product(name, db_new[name]))
+        for name in (db_old.keys() - db_new.keys()):
+            print("- %s\n" % format_product(name, db_old[name]))
 
     json.dump(db_new, db_file, sort_keys=True, indent=4)
 
